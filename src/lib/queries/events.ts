@@ -7,6 +7,7 @@ import type {
   EventRow,
   PaginatedEvents,
   EventFilters,
+  StreamFilters,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -245,4 +246,66 @@ export async function getEventsByType(
     [eventType, timeRange.start, timeRange.end],
   );
   return rows.map(mapEventRow);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Distinct event types                                              */
+/* ------------------------------------------------------------------ */
+
+export async function getDistinctEventTypes(): Promise<string[]> {
+  const { rows } = await eventsPool.query(
+    `SELECT DISTINCT event_type FROM event_log ORDER BY event_type`,
+  );
+  return rows.map((r: Record<string, unknown>) => r.event_type as string);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Stream events — paginated feed with multi-select filters          */
+/* ------------------------------------------------------------------ */
+
+export async function getStreamEvents(
+  limit: number,
+  offset: number,
+  filters?: StreamFilters,
+): Promise<PaginatedEvents> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let idx = 1;
+
+  if (filters?.eventTypes && filters.eventTypes.length > 0) {
+    conditions.push(`event_type = ANY($${idx++})`);
+    params.push(filters.eventTypes);
+  }
+  if (filters?.deviceId) {
+    conditions.push(`device_id = $${idx++}`);
+    params.push(filters.deviceId);
+  }
+  if (filters?.locationId) {
+    conditions.push(`location_id = $${idx++}`);
+    params.push(filters.locationId);
+  }
+  if (filters?.profileId) {
+    conditions.push(
+      `(COALESCE(primary_profile_id::text, payload->>'profile_id') = $${idx}
+        OR (payload->'profile_ids_present' IS NOT NULL
+            AND payload->'profile_ids_present' @> to_jsonb($${idx}::text)))`,
+    );
+    params.push(filters.profileId);
+    idx++;
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const countQuery = `SELECT COUNT(*)::int AS total FROM event_log ${where}`;
+  const dataQuery = `SELECT * FROM event_log ${where} ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
+
+  const [countResult, dataResult] = await Promise.all([
+    eventsPool.query(countQuery, params),
+    eventsPool.query(dataQuery, [...params, limit, offset]),
+  ]);
+
+  return {
+    rows: dataResult.rows.map(mapEventRow),
+    total: countResult.rows[0].total as number,
+  };
 }

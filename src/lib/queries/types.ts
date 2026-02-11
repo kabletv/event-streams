@@ -49,6 +49,14 @@ export interface EventFilters {
   locationId?: string;
 }
 
+/** Filters for the stream page — supports multi-select event types */
+export interface StreamFilters {
+  eventTypes?: string[];
+  deviceId?: string;
+  profileId?: string;
+  locationId?: string;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Reference data types                                              */
 /* ------------------------------------------------------------------ */
