@@ -28,13 +28,18 @@ export async function getKPIs(hours: number): Promise<KPIs> {
     [`${hours} hours`]
   );
 
-  // Profile count from payload extraction
+  // Profile count from payload extraction (including array-based profile_ids_present)
   const [profileCount] = await queryEvents<{ profiles: string }>(
     `SELECT COUNT(DISTINCT resolved) AS profiles FROM (
       SELECT COALESCE(primary_profile_id::text, payload->>'profile_id') AS resolved
       FROM event_log
       WHERE created_at >= NOW() - $1::interval
         AND (primary_profile_id IS NOT NULL OR payload->>'profile_id' IS NOT NULL)
+      UNION
+      SELECT jsonb_array_elements_text(payload->'profile_ids_present') AS resolved
+      FROM event_log
+      WHERE created_at >= NOW() - $1::interval
+        AND payload ? 'profile_ids_present'
     ) sub WHERE resolved IS NOT NULL`,
     [`${hours} hours`]
   );
@@ -187,6 +192,16 @@ export async function getProfileStats(hours: number): Promise<ProfileRow[]> {
         created_at
       FROM event_log
       WHERE created_at >= NOW() - $1::interval
+        AND (primary_profile_id IS NOT NULL OR payload->>'profile_id' IS NOT NULL)
+      UNION ALL
+      SELECT
+        jsonb_array_elements_text(payload->'profile_ids_present') AS resolved,
+        device_id,
+        location_id,
+        created_at
+      FROM event_log
+      WHERE created_at >= NOW() - $1::interval
+        AND payload ? 'profile_ids_present'
     ) sub
     WHERE resolved IS NOT NULL
     GROUP BY resolved
@@ -203,7 +218,11 @@ export async function getProfileEvents(
   return queryEvents<DeviceEvent>(
     `SELECT id::text, created_at::text, event_type, payload
     FROM event_log
-    WHERE (primary_profile_id::text = $1 OR payload->>'profile_id' = $1)
+    WHERE (
+      primary_profile_id::text = $1
+      OR payload->>'profile_id' = $1
+      OR (payload ? 'profile_ids_present' AND payload->'profile_ids_present' @> to_jsonb($1::text))
+    )
       AND created_at >= NOW() - $2::interval
     ORDER BY created_at DESC
     LIMIT $3`,
@@ -222,7 +241,11 @@ export async function getProfileTimeSeries(
       event_type,
       COUNT(*)::int AS count
     FROM event_log
-    WHERE (primary_profile_id::text = $2 OR payload->>'profile_id' = $2)
+    WHERE (
+      primary_profile_id::text = $2
+      OR payload->>'profile_id' = $2
+      OR (payload ? 'profile_ids_present' AND payload->'profile_ids_present' @> to_jsonb($2::text))
+    )
       AND created_at >= NOW() - $3::interval
     GROUP BY 1, event_type
     ORDER BY 1`,
@@ -380,7 +403,7 @@ export async function getStreamEvents(
   }
 
   const profileCondition = profileId
-    ? `AND (primary_profile_id::text = $${paramIdx} OR payload->>'profile_id' = $${paramIdx})`
+    ? `AND (primary_profile_id::text = $${paramIdx} OR payload->>'profile_id' = $${paramIdx} OR (payload ? 'profile_ids_present' AND payload->'profile_ids_present' @> to_jsonb($${paramIdx}::text)))`
     : "";
   if (profileId) {
     params.push(profileId);
@@ -398,7 +421,11 @@ export async function getStreamEvents(
       location_id::text,
       primary_profile_id::text,
       payload,
-      COALESCE(primary_profile_id::text, payload->>'profile_id') AS resolved_profile_id
+      COALESCE(
+        primary_profile_id::text,
+        payload->>'profile_id',
+        (SELECT jsonb_array_elements_text(payload->'profile_ids_present') LIMIT 1)
+      ) AS resolved_profile_id
     FROM event_log
     WHERE ${conditions.join(" AND ")} ${profileCondition}
     ORDER BY created_at DESC
@@ -433,12 +460,18 @@ export async function getEventTypeDetails(eventType: string, hours: number) {
         [eventType, `${hours} hours`]
       ),
       queryEvents<{ profile_id: string; count: number }>(
-        `SELECT
-          COALESCE(primary_profile_id::text, payload->>'profile_id') AS profile_id,
-          COUNT(*)::int AS count
-        FROM event_log
-        WHERE event_type = $1 AND created_at >= NOW() - $2::interval
-          AND (primary_profile_id IS NOT NULL OR payload->>'profile_id' IS NOT NULL)
+        `SELECT profile_id, COUNT(*)::int AS count FROM (
+          SELECT COALESCE(primary_profile_id::text, payload->>'profile_id') AS profile_id
+          FROM event_log
+          WHERE event_type = $1 AND created_at >= NOW() - $2::interval
+            AND (primary_profile_id IS NOT NULL OR payload->>'profile_id' IS NOT NULL)
+          UNION ALL
+          SELECT jsonb_array_elements_text(payload->'profile_ids_present') AS profile_id
+          FROM event_log
+          WHERE event_type = $1 AND created_at >= NOW() - $2::interval
+            AND payload ? 'profile_ids_present'
+        ) sub
+        WHERE profile_id IS NOT NULL
         GROUP BY profile_id
         ORDER BY count DESC
         LIMIT 10`,
@@ -460,4 +493,19 @@ export async function getEventTypeDetails(eventType: string, hours: number) {
     topProfiles: topProfilesPromise,
     samples: samplesPromise,
   };
+}
+
+// ── Distinct event types (for filter dropdowns) ──
+
+export async function getDistinctEventTypes(
+  hours: number
+): Promise<string[]> {
+  const rows = await queryEvents<{ event_type: string }>(
+    `SELECT DISTINCT event_type
+    FROM event_log
+    WHERE created_at >= NOW() - $1::interval
+    ORDER BY event_type`,
+    [`${hours} hours`]
+  );
+  return rows.map((r) => r.event_type);
 }

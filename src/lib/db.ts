@@ -65,14 +65,14 @@ export async function getProfiles(): Promise<Map<string, Profile>> {
   if (profileCache && !isCacheStale()) return profileCache;
   const rows = await queryMain<{
     id: string;
-    metadata: Record<string, string> | null;
+    name: string | null;
     avatar: string | null;
-  }>("SELECT id, metadata, avatar FROM profile");
+  }>("SELECT id, metadata -> 'name' AS name, avatar FROM profile");
   profileCache = new Map();
   for (const row of rows) {
     profileCache.set(row.id, {
       id: row.id,
-      name: row.metadata?.name || "Unknown",
+      name: row.name || "Unknown",
       avatar: row.avatar,
     });
   }

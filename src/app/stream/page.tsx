@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { TimeRangeSelector } from "@/components/time-range-selector";
 import { TableSkeleton } from "@/components/loading-skeleton";
 import { StreamContent } from "./stream-content";
-import { getStreamEvents } from "@/lib/queries";
+import { getStreamEvents, getDistinctEventTypes } from "@/lib/queries";
 import {
   getProfiles,
   getDevices,
@@ -35,12 +35,14 @@ async function StreamData({
 }) {
   const eventTypes = types ? types.split(",") : undefined;
 
-  const [events, profiles, devices, locations] = await Promise.all([
-    getStreamEvents(hours, 50, 0, eventTypes, device, profile, location),
-    getProfiles(),
-    getDevices(),
-    getLocations(),
-  ]);
+  const [events, profiles, devices, locations, distinctEventTypes] =
+    await Promise.all([
+      getStreamEvents(hours, 50, 0, eventTypes, device, profile, location),
+      getProfiles(),
+      getDevices(),
+      getLocations(),
+      getDistinctEventTypes(hours),
+    ]);
 
   const serializedProfiles = Object.fromEntries(profiles);
   const serializedDevices = Object.fromEntries(devices);
@@ -52,6 +54,7 @@ async function StreamData({
       profiles={serializedProfiles}
       devices={serializedDevices}
       locations={serializedLocations}
+      eventTypes={distinctEventTypes}
     />
   );
 }
