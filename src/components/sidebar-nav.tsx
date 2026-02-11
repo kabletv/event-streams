@@ -23,10 +23,11 @@ const navItems = [
   { label: "Devices", href: "/devices", icon: Monitor },
   { label: "Profiles", href: "/profiles", icon: Users },
   { label: "Locations", href: "/locations", icon: MapPin },
+  { label: "Events", href: "/events", icon: Calendar },
   { label: "Stream", href: "/stream", icon: Activity },
 ];
 
-const disabledItems = [{ label: "Events", icon: Calendar }];
+const disabledItems: { label: string; icon: typeof Calendar }[] = [];
 
 export function SidebarNav() {
   const pathname = usePathname();
