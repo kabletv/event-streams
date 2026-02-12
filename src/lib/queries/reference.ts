@@ -49,7 +49,7 @@ export async function getProfiles(): Promise<Profile[]> {
 
   const { rows } = await mainPool.query(
     `SELECT id, metadata->'name' AS display_name, metadata, created_at, updated_at
-     FROM profiles
+     FROM profile
      ORDER BY metadata->'name' NULLS LAST`,
   );
   return setCache("profiles:all", rows.map(mapProfile));
@@ -62,7 +62,7 @@ export async function getProfileById(id: string): Promise<Profile | null> {
 
   const { rows } = await mainPool.query(
     `SELECT id, metadata->'name' AS display_name, metadata, created_at, updated_at
-     FROM profiles
+     FROM profile
      WHERE id = $1`,
     [id],
   );
@@ -91,11 +91,11 @@ export async function getDevices(): Promise<Device[]> {
   if (cached) return cached;
 
   const { rows } = await mainPool.query(
-    `SELECT d.id, d.name, d.device_type, d.location_id,
-            l.name AS location_name,
+    `SELECT d.id, d.name, d.type AS device_type, d.location_id,
+            l.display_name AS location_name,
             d.created_at, d.updated_at
-     FROM devices d
-     LEFT JOIN locations l ON l.id = d.location_id
+     FROM device d
+     LEFT JOIN location l ON l.id = d.location_id
      ORDER BY d.name NULLS LAST`,
   );
   return setCache("devices:all", rows.map(mapDevice));
@@ -107,11 +107,11 @@ export async function getDeviceById(id: string): Promise<Device | null> {
   if (cached) return cached;
 
   const { rows } = await mainPool.query(
-    `SELECT d.id, d.name, d.device_type, d.location_id,
-            l.name AS location_name,
+    `SELECT d.id, d.name, d.type AS device_type, d.location_id,
+            l.display_name AS location_name,
             d.created_at, d.updated_at
-     FROM devices d
-     LEFT JOIN locations l ON l.id = d.location_id
+     FROM device d
+     LEFT JOIN location l ON l.id = d.location_id
      WHERE d.id = $1`,
     [id],
   );
@@ -137,9 +137,9 @@ export async function getLocations(): Promise<Location[]> {
   if (cached) return cached;
 
   const { rows } = await mainPool.query(
-    `SELECT id, name, created_at, updated_at
-     FROM locations
-     ORDER BY name`,
+    `SELECT id, display_name AS name, created_at, updated_at
+     FROM location
+     ORDER BY display_name`,
   );
   return setCache("locations:all", rows.map(mapLocation));
 }
@@ -150,8 +150,8 @@ export async function getLocationById(id: string): Promise<Location | null> {
   if (cached) return cached;
 
   const { rows } = await mainPool.query(
-    `SELECT id, name, created_at, updated_at
-     FROM locations
+    `SELECT id, display_name AS name, created_at, updated_at
+     FROM location
      WHERE id = $1`,
     [id],
   );
@@ -170,8 +170,8 @@ export async function getLocationProfiles(
   const { rows } = await mainPool.query(
     `SELECT DISTINCT p.id, metadata->'name' AS display_name, p.metadata,
             p.created_at, p.updated_at
-     FROM profiles p
-     JOIN profile_locations pl ON pl.profile_id = p.id
+     FROM profile p
+     JOIN locations_profiles pl ON pl.profile_id = p.id
      WHERE pl.location_id = $1
      ORDER BY metadata->'name' NULLS LAST`,
     [locationId],

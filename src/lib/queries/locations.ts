@@ -65,7 +65,7 @@ export async function getLocationEventStats(
 export async function getLocationDeviceCounts(): Promise<LocationDeviceCount[]> {
   const { rows } = await mainPool.query(
     `SELECT location_id, COUNT(*)::int AS device_count
-     FROM devices
+     FROM device
      WHERE location_id IS NOT NULL
      GROUP BY location_id`,
   );
@@ -83,7 +83,7 @@ export async function getLocationDeviceCounts(): Promise<LocationDeviceCount[]> 
 export async function getLocationProfileCounts(): Promise<LocationProfileCount[]> {
   const { rows } = await mainPool.query(
     `SELECT location_id, COUNT(*)::int AS profile_count
-     FROM profile_locations
+     FROM locations_profiles
      GROUP BY location_id`,
   );
 

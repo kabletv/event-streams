@@ -28,7 +28,8 @@ export async function getDeviceEventStats(
        MAX(created_at) AS last_event,
        jsonb_object_agg(event_type, type_count) AS type_counts
      FROM (
-       SELECT device_id, event_type, COUNT(*)::int AS type_count
+       SELECT device_id, event_type, COUNT(*)::int AS type_count,
+              MAX(created_at) AS created_at
        FROM event_log
        WHERE created_at >= $1 AND created_at <= $2
          AND device_id IS NOT NULL
